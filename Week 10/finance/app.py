@@ -1,4 +1,5 @@
 import os
+import locale
 
 from cs50 import SQL
 from flask import Flask, flash, redirect, render_template, request, session
@@ -6,6 +7,8 @@ from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from helpers import apology, login_required, lookup, usd
+
+locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 
 # Configure application
 app = Flask(__name__)
@@ -35,8 +38,39 @@ def after_request(response):
 @login_required
 def index():
     """Show portfolio of stocks"""
+    user_id = session["user_id"]
 
-    return apology("TODO")
+    # Select all transactions for user
+    transactions = db.execute(
+        "SELECT symbol, SUM(shares) as total_shares FROM transactions WHERE user_id = ? GROUP BY symbol", user_id)
+
+    holdings = []
+
+    # Lookup share price
+    for transaction in transactions:
+        stock_info = lookup(transaction["symbol"])
+        holdings.append({
+            "symbol": transaction["symbol"],
+            "name": stock_info["name"],
+            "price": usd(stock_info["price"]),
+            "total_shares": transaction["total_shares"],
+            "value": usd(stock_info["price"] * transaction["total_shares"])
+        })
+
+    # Get user's available cash balance
+    cash = db.execute("SELECT cash FROM users WHERE id = ?", user_id)[0]["cash"]
+
+    # Get grand total value
+    grand_total = cash
+
+    for holding in holdings:
+        value = locale.atof(holding["value"][1:])
+        grand_total += value
+
+        return render_template("index.html", holdings=holdings, cash=usd(cash), grand_total=usd(grand_total))
+
+    else:
+        return apology("Unable to render the Homepage, please refresh the page", 400)
 
 
 @app.route("/buy", methods=["GET", "POST"])
@@ -49,7 +83,7 @@ def buy():
         cash = row[0]["cash"]
 
         # Pass to template
-        return render_template("buy.html", cash=cash)
+        return render_template("buy.html", cash=round(cash, 2))
 
     if request.method == "POST":
         symbol = request.form.get("symbol")
@@ -88,7 +122,7 @@ def buy():
         return redirect("/")
 
     else:
-        return render_template("buy.html")
+        return apology("Unable to buy stock, please try again")
 
 
 
