@@ -43,8 +43,53 @@ def index():
 @login_required
 def buy():
     """Buy shares of stock"""
+    if request.method == "GET":
+        # Lookup current cash balance
+        row = db.execute("SELECT cash FROM users WHERE id = ?", session["user_id"])
+        cash = row[0]["cash"]
 
-    return apology("TODO")
+        # Pass to template
+        return render_template("buy.html", cash=cash)
+
+    if request.method == "POST":
+        symbol = request.form.get("symbol")
+        if not symbol:
+            return apology("must provide symbol")
+
+        quote = lookup(symbol)
+        if not quote:
+            return apology("invalid symbol")
+
+        try:
+            shares = int(request.form.get("shares"))
+        except:
+            return apology("shares must be positive int")
+
+        if shares <= 0:
+            return apology("shares must be positive int")
+
+        row = db.execute("SELECT cash FROM users WHERE id = ?", session["user_id"])
+        cash = row[0]["cash"]
+
+        stock_price = quote["price"]
+        total_cost = stock_price * shares
+
+        if cash < total_cost:
+            return apology("not enough cash")
+
+        db.execute("INSERT INTO transactions (user_id, symbol, shares, price) VALUES(?, ?, ?, ?)",
+                   session["user_id"], quote["symbol"], shares, quote["price"])
+
+        db.execute("UPDATE users SET cash = ? WHERE id = ?",
+                   cash - total_cost, session["user_id"])
+
+
+
+        return redirect("/")
+
+    else:
+        return render_template("buy.html")
+
 
 
 @app.route("/history")
