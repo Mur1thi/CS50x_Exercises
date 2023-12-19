@@ -43,6 +43,7 @@ def index():
 @login_required
 def buy():
     """Buy shares of stock"""
+
     return apology("TODO")
 
 
@@ -103,9 +104,18 @@ def logout():
 @app.route("/quote", methods=["GET", "POST"])
 @login_required
 def quote():
-    """Get stock quote."""
-
-    return apology("TODO")
+        """Get stock quote."""
+        if request.method == "GET":
+            return render_template("quote.html")
+        if request.method == "POST":
+            symbol = request.form.get("symbol")
+            if not symbol:
+                return apology("must provide symbol", 400)
+            quote = lookup(symbol)
+            if not quote:
+                return apology("invalid symbol", 400)
+            return render_template("quoted.html", quote=quote)
+            return apology("Retry quote", 400)
 
 
 @app.route("/register", methods=["GET", "POST"])
