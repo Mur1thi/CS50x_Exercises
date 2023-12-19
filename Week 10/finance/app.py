@@ -133,7 +133,14 @@ def buy():
 @login_required
 def history():
     """Show history of transactions"""
-    return apology("TODO")
+
+    transactions = db.execute("""
+        SELECT symbol, shares, price, time 
+        FROM transactions 
+        WHERE user_id = :user_id
+    """, user_id=session["user_id"])
+
+    return render_template("history.html", transactions=transactions)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -233,39 +240,85 @@ def register():
 def sell():
     """Sell shares of stock"""
     if request.method == "POST":
-
-        # Ensure symbol was submitted
         symbol = request.form.get("symbol")
+
+        # Validate symbol
         if not symbol:
-            return apology("must select a stock")
+            return apology("must provide symbol", 400)
 
-        # Ensure shares was submitted
-        try:
-            shares = int(request.form.get("shares"))
-        except:
-            return apology("must provide valid shares")
+        # Lookup current shares
+        rows = db.execute("SELECT SUM(shares) AS total_shares FROM transactions WHERE user_id = ? AND symbol = ?",
+                          session["user_id"], symbol)
 
-        # Lookup stock price
+        if len(rows) == 0 or rows[0]["total_shares"] == 0:
+            return apology("you do not own any shares of this stock")
+
+        shares = int(request.form.get("shares"))
+
+        # Validate shares
+        if shares < 0:
+            return apology("shares must be positive", 400)
+
+        if shares > rows[0]["total_shares"]:
+            return apology("too many shares", 400)
+
+        # Get current price
         quote = lookup(symbol)
         if not quote:
-            return apology("symbol not found")
+            return apology("invalid symbol", 400)
 
-        # Calculate total proceeds
         price = quote["price"]
-        total_proceeds = shares * price
+        proceeds = shares * price
 
-        # Insert transaction
+        # Insert sell transaction
         db.execute("INSERT INTO transactions (user_id, symbol, shares, price) VALUES(?, ?, ?, ?)",
                    session["user_id"], symbol, -shares, price)
 
         # Update cash balance
-        db.execute("UPDATE users SET cash = cash + ? WHERE id = ?", total_proceeds, session["user_id"])
+        db.execute("UPDATE users SET cash = cash + ? WHERE id = ?", proceeds, session["user_id"])
 
+        flash("Sold!")
         return redirect("/")
 
     else:
-        # Display user's owned stocks
-        symbols = db.execute("SELECT symbol FROM transactions WHERE user_id = ? GROUP BY symbol HAVING SUM(shares) > 0",
+        # Display stocks user can sell
+        symbols = db.execute("""SELECT symbol, SUM(shares) AS total_shares 
+                                FROM transactions  
+                                WHERE user_id = ?
+                                GROUP BY symbol
+                                HAVING total_shares > 0""",
                              session["user_id"])
 
         return render_template("sell.html", symbols=symbols)
+
+
+# app.py
+
+@app.route("/deposit", methods=["GET", "POST"])
+@login_required
+def deposit():
+    """Deposit cash into user account"""
+    if request.method == "GET":
+        return render_template("deposit.html")
+
+    if request.method == "POST":
+        amount = request.form.get("amount")
+
+        if not amount:
+            return apology("must provide amount", 400)
+
+        try:
+            amount = float(amount)
+        except ValueError:
+            return apology("invalid amount", 400)
+
+        if amount < 0:
+            return apology("amount must be positive", 400)
+
+        user_id = session["user_id"]
+        db.execute("UPDATE users SET cash = cash + ? WHERE id = ?", amount, user_id)
+        flash(f"Successfully deposited ${amount}!")
+
+        return redirect("/")
+
+    return apology("Deposit error, please try again")
