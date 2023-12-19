@@ -37,40 +37,43 @@ def after_request(response):
 @app.route("/")
 @login_required
 def index():
-    """Show portfolio of stocks"""
     user_id = session["user_id"]
 
     # Select all transactions for user
-    transactions = db.execute(
-        "SELECT symbol, SUM(shares) as total_shares FROM transactions WHERE user_id = ? GROUP BY symbol", user_id)
+    transactions = db.execute("SELECT * FROM transactions WHERE user_id = ?", user_id)
 
     holdings = []
+    grand_total = 0
 
-    # Lookup share price
+    # Loop through transactions
     for transaction in transactions:
-        stock_info = lookup(transaction["symbol"])
-        holdings.append({
-            "symbol": transaction["symbol"],
-            "name": stock_info["name"],
-            "price": usd(stock_info["price"]),
-            "total_shares": transaction["total_shares"],
-            "value": usd(stock_info["price"] * transaction["total_shares"])
-        })
+        # Lookup current share price
+        quote = lookup(transaction["symbol"])
 
-    # Get user's available cash balance
-    cash = db.execute("SELECT cash FROM users WHERE id = ?", user_id)[0]["cash"]
+        # Calculate total value for this transaction
+        value = quote["price"] * transaction["shares"]
 
-    # Get grand total value
-    grand_total = cash
-
-    for holding in holdings:
-        value = locale.atof(holding["value"][1:])
+        # Sum to grand total
         grand_total += value
 
-        return render_template("index.html", holdings=holdings, cash=usd(cash), grand_total=usd(grand_total))
+        # Populate holdings
+        holdings.append({
+            "name": quote["name"],
+            "shares": transaction["shares"],
+            "price": usd(quote["price"]),
+            "value": usd(value)
+        })
 
-    else:
-        return apology("Unable to render the Homepage, please refresh the page", 400)
+    # Get current cash balance
+    cash = db.execute("SELECT cash FROM users WHERE id = ?", user_id)[0]["cash"]
+
+    # Add to grand total
+    grand_total += cash
+
+    return render_template("index.html", holdings=holdings,
+                           cash=usd(cash),
+                           grand_total=usd(grand_total))
+
 
 
 @app.route("/buy", methods=["GET", "POST"])
@@ -229,4 +232,40 @@ def register():
 @login_required
 def sell():
     """Sell shares of stock"""
-    return apology("TODO")
+    if request.method == "POST":
+
+        # Ensure symbol was submitted
+        symbol = request.form.get("symbol")
+        if not symbol:
+            return apology("must select a stock")
+
+        # Ensure shares was submitted
+        try:
+            shares = int(request.form.get("shares"))
+        except:
+            return apology("must provide valid shares")
+
+        # Lookup stock price
+        quote = lookup(symbol)
+        if not quote:
+            return apology("symbol not found")
+
+        # Calculate total proceeds
+        price = quote["price"]
+        total_proceeds = shares * price
+
+        # Insert transaction
+        db.execute("INSERT INTO transactions (user_id, symbol, shares, price) VALUES(?, ?, ?, ?)",
+                   session["user_id"], symbol, -shares, price)
+
+        # Update cash balance
+        db.execute("UPDATE users SET cash = cash + ? WHERE id = ?", total_proceeds, session["user_id"])
+
+        return redirect("/")
+
+    else:
+        # Display user's owned stocks
+        symbols = db.execute("SELECT symbol FROM transactions WHERE user_id = ? GROUP BY symbol HAVING SUM(shares) > 0",
+                             session["user_id"])
+
+        return render_template("sell.html", symbols=symbols)
