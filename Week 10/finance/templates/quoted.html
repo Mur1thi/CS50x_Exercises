@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Quoted
+{% endblock %}
+
+{% block main %}
+
+    <div class="card" style="width: 18rem;">
+      <div class="card-body">
+        <h3 class="card-title">{{ quote["name"] }}</h3>
+        <h6 class="card-subtitle mb-2 text-muted">{{ quote["symbol"] }}</h6>
+        <p class="card-text">Price: {{ quote["price"] | usd }}</p>
+      </div>
+    </div>
+
+{% endblock %}

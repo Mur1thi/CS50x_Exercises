@@ -35,6 +35,7 @@ def after_request(response):
 @login_required
 def index():
     """Show portfolio of stocks"""
+
     return apology("TODO")
 
 
@@ -103,13 +104,36 @@ def logout():
 @login_required
 def quote():
     """Get stock quote."""
+
     return apology("TODO")
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
     """Register user"""
-    return apology("TODO")
+    if request.method == "GET": return render_template("register.html")
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        confirmation = request.form.get("confirmation")
+
+        # Ensure username was submitted
+        if not username: return apology("must provide username", 400)
+
+        # Ensure password was submitted
+        if not password: return apology("must provide password", 400)
+
+        # Ensure confirmation was submitted
+        if not confirmation: return apology("must confirm password", 400)
+
+        # Ensure passwords match
+        if password != confirmation: return apology("passwords do not match", 400)
+        hash = generate_password_hash(password)
+        try: db.execute("INSERT INTO users (username, hash) VALUES (?, ?)", username, hash)
+        except: return apology("username already exists", 400)
+        session["user_id"] = db.execute("SELECT id FROM users WHERE username = ?", username)[0]["id"]
+        return redirect("/")
+    return apology("Registration failed", 400)
 
 
 @app.route("/sell", methods=["GET", "POST"])
